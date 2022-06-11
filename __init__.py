@@ -1,1 +1,1 @@
-from vit import get_config, ViTClassifier, ViTDistilled
+from .vit import get_config, ViTClassifier, ViTDistilled
