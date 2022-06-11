@@ -90,7 +90,11 @@ class ViTDistilled(ViTClassifier):
 
         # Final layer normalization.
         representation = self.layer_norm(encoded_patches)
-
+        
+        # Added lines: Simone Rossetti
+        if self.config.only_full_representation:
+            return representation
+        
         # Pool representation.
         if self.config.pre_logits:
             return (
