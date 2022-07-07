@@ -71,7 +71,7 @@ class ViTDistilled(ViTClassifier):
 
         # Add positional embeddings to the projected patches.
         encoded_patches = (
-            tf.cast(self.interpolate_pos_encoding(projected_patches), dtype=projected_patches[].dtype) + projected_patches
+            tf.cast(self.interpolate_pos_encoding(projected_patches), dtype=projected_patches.dtype) + projected_patches
         )  # (B, number_patches, projection_dim)
         encoded_patches = self.dropout(encoded_patches)
 
