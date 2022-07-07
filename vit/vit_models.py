@@ -34,24 +34,24 @@ def mlp(x: int, dropout_rate: float, hidden_units: List[int]):
 
 def transformer(config: ConfigDict, name: str, drop_prob=0.0) -> keras.Model:
     """Transformer block with pre-norm."""
-    num_patches = (
-        config.num_patches + 2
-        if "distilled" in config.name
-        else config.num_patches + 1
-    )
-    if "distilled" in config.name:
-        num_patches = config.num_patches + 2
-    elif "distilled" not in config.name and config.classifier == "token":
-        num_patches = config.num_patches + 1
-    elif (
-        config.classifer == "gap"
-    ):  # This setting should not be used during weight porting.
-        assert (
-            "distilled" not in config.name
-        ), "Distillation token is not suitable for GAP."
-        num_patches = config.num_patches + 0
+    # num_patches = (
+    #     config.num_patches + 2
+    #     if "distilled" in config.name
+    #     else config.num_patches + 1
+    # )
+    # if "distilled" in config.name:
+    #     num_patches = config.num_patches + 2
+    # elif "distilled" not in config.name and config.classifier == "token":
+    #     num_patches = config.num_patches + 1
+    # elif (
+    #     config.classifer == "gap"
+    # ):  # This setting should not be used during weight porting.
+    #     assert (
+    #         "distilled" not in config.name
+    #     ), "Distillation token is not suitable for GAP."
+    #     num_patches = config.num_patches + 0
 
-    encoded_patches = layers.Input((num_patches, config.projection_dim))
+    encoded_patches = layers.Input((None, config.projection_dim)) # num_patches
 
     # Layer normalization 1.
     x1 = layers.LayerNormalization(epsilon=config.layer_norm_eps)(
@@ -111,7 +111,7 @@ class ViTClassifier(keras.Model):
                     kernel_initializer="lecun_normal",
                 ),
                 layers.Reshape(
-                    target_shape=(config.num_patches, config.projection_dim),
+                    target_shape=(-1, config.projection_dim), # (config.num_patches, config.projection_dim)
                     name="flatten_projection",
                 ),
             ],
