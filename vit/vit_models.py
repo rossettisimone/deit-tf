@@ -98,7 +98,7 @@ class ViTClassifier(keras.Model):
     def __init__(self, config: ConfigDict, **kwargs):
         super().__init__(**kwargs)
         self.config = config
-
+        self.num_tokens = 1
         # Patchify + embedding.
         self.projection = keras.Sequential(
             [
@@ -124,7 +124,7 @@ class ViTClassifier(keras.Model):
         )
         init_shape = (
             1,
-            config.num_patches + 1
+            config.num_patches + self.num_tokens
             if self.config.classifier == "token"
             else config.num_patches,
             config.projection_dim,
@@ -187,7 +187,7 @@ class ViTClassifier(keras.Model):
 
         # Add positional embeddings to the projected patches.
         encoded_patches = (
-            self.positional_embedding + projected_patches
+            tf.cast(self.interpolate_pos_encoding(projected_patches), dtype=projected_patches.dtype) + projected_patches
         )  # (B, number_patches, projection_dim)
         encoded_patches = self.dropout(encoded_patches)
 
@@ -207,16 +207,37 @@ class ViTClassifier(keras.Model):
         # Final layer normalization.
         representation = self.layer_norm(encoded_patches)
 
-        # Pool representation.
-        if self.config.classifier == "token":
-            encoded_patches = representation[:, 0]
-        elif self.config.classifier == "gap":
-            encoded_patches = self.gap_layer(representation)
+        return representation
+        # # Pool representation.
+        # if self.config.classifier == "token":
+        #     encoded_patches = representation[:, 0]
+        # elif self.config.classifier == "gap":
+        #     encoded_patches = self.gap_layer(representation)
 
-        if self.config.pre_logits:
-            return encoded_patches, attention_scores
+        # if self.config.pre_logits:
+        #     return encoded_patches, attention_scores
 
-        # Classification head.
-        else:
-            output = self.head(encoded_patches)
-            return output, attention_scores
+        # # Classification head.
+        # else:
+        #     output = self.head(encoded_patches)
+        #     return output, attention_scores
+    
+    def interpolate_pos_encoding(self, x):
+        M = tf.shape(x)[1] - self.num_tokens
+        N = tf.shape(self.positional_embedding)[1] - self.num_tokens
+
+        def interpolate():
+            class_pos_embed = self.positional_embedding[:, :self.num_tokens]
+            patch_pos_embed = self.positional_embedding[:, self.num_tokens:]
+            dim = tf.shape(x)[-1]
+            MM = tf.cast(tf.math.sqrt(tf.cast(M,tf.float32)),tf.int32)
+            NN = tf.cast(tf.math.sqrt(tf.cast(N,tf.float32)),tf.int32)
+            patch_pos_embed = tf.image.resize(
+                tf.reshape(patch_pos_embed,(1, NN, NN, dim)),
+                (MM, MM),
+                method=tf.image.ResizeMethod.BICUBIC,
+            )
+            patch_pos_embed = tf.reshape(patch_pos_embed, (1, -1, dim))
+            return tf.concat((class_pos_embed, patch_pos_embed), axis=1)
+
+        return tf.cond(tf.equal(M,N),lambda: self.positional_embedding, interpolate)
