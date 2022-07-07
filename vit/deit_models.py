@@ -71,7 +71,7 @@ class ViTDistilled(ViTClassifier):
 
         # Add positional embeddings to the projected patches.
         encoded_patches = (
-            self.positional_embedding + projected_patches
+            tf.cast(self.interpolate_pos_encoding(projected_patches), dtype=projected_patches[].dtype) + projected_patches
         )  # (B, number_patches, projection_dim)
         encoded_patches = self.dropout(encoded_patches)
 
@@ -90,28 +90,48 @@ class ViTDistilled(ViTClassifier):
 
         # Final layer normalization.
         representation = self.layer_norm(encoded_patches)
-        
+
         # Added lines: Simone Rossetti
-        if self.config.only_full_representation:
-            return representation
+        # if self.config.only_full_representation:
+        return representation
         
         # Pool representation.
-        if self.config.pre_logits:
-            return (
-                representation[:, 0] + representation[:, 1]
-            ) / 2, attention_scores
+        # if self.config.pre_logits:
+        #     return (
+        #         representation[:, 0] + representation[:, 1]
+        #     ) / 2, attention_scores
 
-        # Classification heads.
-        else:
-            x, x_dist = self.head(representation[:, 0]), self.head_dist(
-                representation[:, 1]
+        # # Classification heads.
+        # else:
+        #     x, x_dist = self.head(representation[:, 0]), self.head_dist(
+        #         representation[:, 1]
+        #     )
+
+        #     if "distilled" in self.config.name and training:
+        #         # Only return separate classification predictions when training in distilled mode.
+        #         return x, x_dist, attention_scores
+
+        #     else:
+        #         # During standard train / finetune, inference average the classifier predictions.
+        #         # Additionally, return the attention scores too.
+        #         return (x + x_dist) / 2, attention_scores
+    
+    def interpolate_pos_encoding(self, x):
+        M = tf.shape(x)[1] - self.num_tokens
+        N = tf.shape(self.positional_embedding)[1] - self.num_tokens
+
+        def interpolate():
+            class_pos_embed = self.positional_embedding[:, :self.num_tokens]
+            patch_pos_embed = self.positional_embedding[:, self.num_tokens:]
+            dim = tf.shape(x)[-1]
+            MM = tf.cast(tf.math.sqrt(tf.cast(M,tf.float32)),tf.int32)
+            NN = tf.cast(tf.math.sqrt(tf.cast(N,tf.float32)),tf.int32)
+            patch_pos_embed = tf.image.resize(
+                tf.reshape(patch_pos_embed,(1, NN, NN, dim)),
+                (MM, MM),
+                method=tf.image.ResizeMethod.BICUBIC,
             )
+            patch_pos_embed = tf.reshape(patch_pos_embed, (1, -1, dim))
+            return tf.concat((class_pos_embed, patch_pos_embed), axis=1)
 
-            if "distilled" in self.config.name and training:
-                # Only return separate classification predictions when training in distilled mode.
-                return x, x_dist, attention_scores
-
-            else:
-                # During standard train / finetune, inference average the classifier predictions.
-                # Additionally, return the attention scores too.
-                return (x + x_dist) / 2, attention_scores
+        return tf.cond(tf.equal(M,N),lambda: self.positional_embedding, interpolate)
